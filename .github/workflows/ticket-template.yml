@@ -48,16 +48,22 @@ jobs:
       #     (observed as "…/t11-ac1d-smoke/.github/workflows/ticket-template.yml@refs/pull/1/merge");
       #   · declaring workflow_call inputs with defaults — the call then failed to start at all, with
       #     the run reported under the file's path instead of its name and no job, no log and no
-      #     annotation to explain it.
+      #     annotation to explain it — which turned out to be a YAML parse error in a step added
+      #     alongside them, not the inputs themselves.
       - name: Check out the policy component
         uses: actions/checkout@v4
         with:
           repository: Journeys-and-Rewards/ci-workflows
-          ref: v1.0.2
+          ref: v1.0.3
           path: .policy
 
+      # A BLOCK SCALAR, not a plain one. `run: echo "policy component: …"` is an unquoted plain scalar
+      # containing ": ", which YAML rejects with "mapping values are not allowed here" — and a workflow
+      # that does not parse never starts, so the run is reported under the file's path with no job, no
+      # log and no annotation. Two tags shipped with that line before a parser was pointed at the file.
       - name: Report which policy component is in use
-        run: echo "policy component: Journeys-and-Rewards/ci-workflows@v1.0.2"
+        run: |
+          echo "policy component: Journeys-and-Rewards/ci-workflows@v1.0.3"
 
       - name: Ticket specifications follow the standard template
         run: |
