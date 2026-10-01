@@ -25,21 +25,6 @@ name: Ticket Template Policy
 
 on:
   workflow_call:
-    inputs:
-      policy_repo:
-        description: >-
-          The repository holding the policy component. Defaults to this one; a caller only overrides it
-          to test a fork.
-        required: false
-        type: string
-        default: Journeys-and-Rewards/ci-workflows
-      policy_ref:
-        description: >-
-          The ref of the policy component to run. The default is the tag this file was released under,
-          so it always matches the code beside it.
-        required: false
-        type: string
-        default: v1.0.1
 
 permissions:
   contents: read
@@ -52,25 +37,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      # THE POLICY COMPONENT'S OWN LOCATION comes from inputs whose DEFAULTS ship in this same commit,
-      # so the code and the ref that fetches it are tagged together and cannot disagree. A caller passes
-      # nothing.
+      # THE POLICY COMPONENT'S LOCATION IS WRITTEN HERE, and that is deliberate: this file and the ref
+      # below are committed and tagged together, so the validator a project runs is always the code that
+      # shipped beside the workflow calling it. A release bumps both in one commit.
       #
-      # An earlier version derived this from github.workflow_ref, on the assumption that it names the
-      # workflow being executed. It does not: inside a CALLED workflow it reports the CALLER's path. In
-      # the integration run that caught this it read
-      # "Journeys-and-Rewards/t11-ac1d-smoke/.github/workflows/ticket-template.yml@refs/pull/1/merge",
-      # so the step checked out the calling project instead of this repository and the validator was not
-      # there to run.
+      # Two earlier attempts are worth recording, because each failed in a way that was invisible from
+      # the caller's side:
+      #   · deriving it from github.workflow_ref — inside a CALLED workflow that reports the CALLER's
+      #     path, so the step checked out the calling project and the validator was not there to run
+      #     (observed as "…/t11-ac1d-smoke/.github/workflows/ticket-template.yml@refs/pull/1/merge");
+      #   · declaring workflow_call inputs with defaults — the call then failed to start at all, with
+      #     the run reported under the file's path instead of its name and no job, no log and no
+      #     annotation to explain it.
       - name: Check out the policy component
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.policy_repo }}
-          ref: ${{ inputs.policy_ref }}
+          repository: Journeys-and-Rewards/ci-workflows
+          ref: v1.0.2
           path: .policy
 
       - name: Report which policy component is in use
-        run: echo "policy component: ${{ inputs.policy_repo }}@${{ inputs.policy_ref }}"
+        run: echo "policy component: Journeys-and-Rewards/ci-workflows@v1.0.2"
 
       - name: Ticket specifications follow the standard template
         run: |
