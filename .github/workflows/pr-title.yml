@@ -1,0 +1,89 @@
+name: PR Title Policy
+
+# The PR title is the single authored source for a ticket's identity; the engine
+# derives the branch from it (see docs/project-bootstrap-and-ticket-standard.md).
+# This check enforces the canonical shape so title and branch can never diverge.
+#
+#   PR title: <type>(<area>): <subject> (t<N>)
+#   example:  chore(infra): harden engine CI — secret scan + shellcheck + policies (t10)
+#   types:    feat | fix | refactor | perf | test | docs | chore
+#
+# NOTE (t2 follow-up): once ticket-fields.sh owns the regexes, source them here.
+
+# REUSABLE. Called by a 3-line stub in each project repository; the logic lives only here, so a
+# change reaches every project at once and no project can drift from it by editing a copy.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect context
+        id: context
+        env:
+          ACTOR: ${{ github.actor }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+          if [ "$ACTOR" = "dependabot[bot]" ] || [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dependabot bypass
+        if: steps.context.outputs.skip == 'true'
+        run: echo "Dependabot PR detected. PR title policy is bypassed."
+
+      - name: Validate PR title
+        if: steps.context.outputs.skip == 'false'
+        env:
+          PR_TITLE: ${{ steps.context.outputs.pr_title }}
+          PR_TITLE_REGEX: '^(feat|fix|refactor|perf|test|docs|chore)\([a-z0-9][a-z0-9-]*\): .+ \(t[1-9][0-9]*\)$'
+        run: |
+          if echo "$PR_TITLE" | grep -Eq "$PR_TITLE_REGEX"; then
+            echo "PR title is valid: $PR_TITLE"
+            exit 0
+          fi
+          echo "::error title=Invalid PR title::Expected <type>(<area>): <subject> (tN)"
+          {
+            echo "## PR Title Policy Failed"
+            echo ""
+            echo "Expected format: \`<type>(<area>): <subject> (t<N>)\`"
+            echo "Example: \`chore(infra): harden engine CI (t10)\`"
+            echo ""
+            echo "Allowed type: feat | fix | refactor | perf | test | docs | chore"
+            echo "Area: a lowercase token in parentheses (e.g. (infra))."
+            echo "Ticket suffix: \`(t<digits>)\` with no leading zero."
+            echo ""
+            echo "Regex: \`$PR_TITLE_REGEX\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Comment on failure
+        if: failure() && steps.context.outputs.skip == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              "PR title policy failed.",
+              "",
+              "Expected format: `<type>(<area>): <subject> (t<N>)`",
+              "Example: `chore(infra): harden engine CI (t10)`",
+              "",
+              "Allowed `type`: feat | fix | refactor | perf | test | docs | chore",
+              "`area`: a lowercase token in parentheses, e.g. `(infra)`.",
+              "Ticket suffix: `(t<digits>)`, e.g. `(t10)`."
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });

@@ -1,0 +1,96 @@
+name: Ticket Template Policy
+
+# REUSABLE. Called by a 3-line stub in each project repository.
+#
+# WHAT THIS CHECKS, and why it is a separate implementation. GitHub only runs a workflow that
+# physically lives in the repository being checked, so these checks must be centralised here. The
+# engine's own validators cannot be: their measured transitive closure is 18 files and ~10,300 lines,
+# reaching its internal common library and through it the model-routing policy, role execution and the
+# notification channel. None of that belongs in public, and none of it is needed to check the shape of
+# a project's tickets and project state.
+#
+# So lib/ci_policy.py implements exactly the rules a project needs, in pure Python with no engine
+# dependency. The engine holds an equivalence suite that runs BOTH implementations over the same inputs
+# and fails if their verdicts ever diverge, so this is a second implementation under contract rather
+# than a fork.
+#
+# THE CONTRACT COMES FROM THE CALLING PROJECT. This repository supplies validation CODE only. The
+# canonical project-state template is read from the caller's own
+# docs/templates/project-state.template.md, which the engine scaffolds into every project it creates.
+# If that file is missing the check FAILS and says how to restore it — it is never substituted, because
+# a project judged against somebody else's contract has not been judged at all.
+#
+# This job is the status context a project's branch protection requires, so project-state conformance
+# blocks a merge here exactly as it does in the engine's own required check.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  ticket-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # SELF-PINNING. This workflow needs its own lib/ directory, which means checking out its own
+      # repository. Hard-coding the owner, name and tag would require editing this file on every release
+      # and could silently diverge from the tag the caller actually resolved. github.workflow_ref is
+      # exactly "owner/repo/.github/workflows/<file>@<ref>" for the workflow being executed, so both are
+      # derived from it — this workflow always fetches the same commit the calling project pinned.
+      - name: Resolve this workflow's own repository and ref
+        id: self
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          repo="${WORKFLOW_REF%%/.github/workflows/*}"
+          ref="${WORKFLOW_REF##*@}"
+          if [ -z "$repo" ] || [ -z "$ref" ] || [ "$ref" = "$WORKFLOW_REF" ]; then
+            echo "::error title=Unresolvable policy ref::could not read repository/ref from '$WORKFLOW_REF'"
+            exit 1
+          fi
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref"   >> "$GITHUB_OUTPUT"
+          echo "policy component: $repo@$ref"
+
+      - name: Check out the policy component
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .policy
+
+      - name: Ticket specifications follow the standard template
+        run: |
+          set -euo pipefail
+          python3 .policy/lib/ci_policy.py --root . --only tickets
+
+      - name: Project state conformance
+        run: |
+          set -euo pipefail
+          # The contract is the CALLER's own template. Nothing is substituted if it is absent: the
+          # validator fails closed and names the remedy.
+          python3 .policy/lib/ci_policy.py --root . --only project-state
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          {
+            echo "## Ticket Template Policy Failed"
+            echo ""
+            echo "The step log above names each problem, prefixed with the rule that found it."
+            echo ""
+            echo "- \`TT-SECTIONS\` / \`TT-USER-ACTIONED\` — a ticket page under \`docs/tickets/\` does not"
+            echo "  follow the standard template for its kind."
+            echo "- \`PS-SECTIONS\` / \`PS-STANDARD\` / \`PS-PLACEHOLDER\` / \`PS-INSTRUCTIONS\` —"
+            echo "  \`docs/project_state.md\` does not match your project's"
+            echo "  \`docs/templates/project-state.template.md\`."
+            echo "- \`PS-MEMBERSHIP\` — the roadmap registry and \`docs/tickets/\` do not describe the same"
+            echo "  tickets. Add or remove both halves in the same change."
+            echo "- \`PS-NEXT\` — zero or several tickets are marked \`**NEXT**\`; exactly one may be."
+          } >> "$GITHUB_STEP_SUMMARY"
