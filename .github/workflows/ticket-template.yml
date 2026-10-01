@@ -25,6 +25,21 @@ name: Ticket Template Policy
 
 on:
   workflow_call:
+    inputs:
+      policy_repo:
+        description: >-
+          The repository holding the policy component. Defaults to this one; a caller only overrides it
+          to test a fork.
+        required: false
+        type: string
+        default: Journeys-and-Rewards/ci-workflows
+      policy_ref:
+        description: >-
+          The ref of the policy component to run. The default is the tag this file was released under,
+          so it always matches the code beside it.
+        required: false
+        type: string
+        default: v1.0.1
 
 permissions:
   contents: read
@@ -37,33 +52,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      # SELF-PINNING. This workflow needs its own lib/ directory, which means checking out its own
-      # repository. Hard-coding the owner, name and tag would require editing this file on every release
-      # and could silently diverge from the tag the caller actually resolved. github.workflow_ref is
-      # exactly "owner/repo/.github/workflows/<file>@<ref>" for the workflow being executed, so both are
-      # derived from it — this workflow always fetches the same commit the calling project pinned.
-      - name: Resolve this workflow's own repository and ref
-        id: self
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          set -euo pipefail
-          repo="${WORKFLOW_REF%%/.github/workflows/*}"
-          ref="${WORKFLOW_REF##*@}"
-          if [ -z "$repo" ] || [ -z "$ref" ] || [ "$ref" = "$WORKFLOW_REF" ]; then
-            echo "::error title=Unresolvable policy ref::could not read repository/ref from '$WORKFLOW_REF'"
-            exit 1
-          fi
-          echo "repo=$repo" >> "$GITHUB_OUTPUT"
-          echo "ref=$ref"   >> "$GITHUB_OUTPUT"
-          echo "policy component: $repo@$ref"
-
+      # THE POLICY COMPONENT'S OWN LOCATION comes from inputs whose DEFAULTS ship in this same commit,
+      # so the code and the ref that fetches it are tagged together and cannot disagree. A caller passes
+      # nothing.
+      #
+      # An earlier version derived this from github.workflow_ref, on the assumption that it names the
+      # workflow being executed. It does not: inside a CALLED workflow it reports the CALLER's path. In
+      # the integration run that caught this it read
+      # "Journeys-and-Rewards/t11-ac1d-smoke/.github/workflows/ticket-template.yml@refs/pull/1/merge",
+      # so the step checked out the calling project instead of this repository and the validator was not
+      # there to run.
       - name: Check out the policy component
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.self.outputs.repo }}
-          ref: ${{ steps.self.outputs.ref }}
+          repository: ${{ inputs.policy_repo }}
+          ref: ${{ inputs.policy_ref }}
           path: .policy
+
+      - name: Report which policy component is in use
+        run: echo "policy component: ${{ inputs.policy_repo }}@${{ inputs.policy_ref }}"
 
       - name: Ticket specifications follow the standard template
         run: |

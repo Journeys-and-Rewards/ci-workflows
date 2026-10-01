@@ -15,9 +15,15 @@ name: PR Title Policy
 on:
   workflow_call:
 
+# contents: read ONLY. A called workflow cannot be granted more permission than its caller provides,
+# and a generated caller stub grants `contents: read` — so requesting `pull-requests: write` here made
+# every call fail before it started (conclusion: startup_failure, with no annotation to explain it).
+#
+# The engine's own copy keeps a step that posts the failure as a PR comment; that step is removed here
+# rather than widening every project's token for a convenience. The failure is still explained in full
+# in the run's step summary.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   validate-pr-title:
@@ -65,25 +71,3 @@ jobs:
             echo "Regex: \`$PR_TITLE_REGEX\`"
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
-
-      - name: Comment on failure
-        if: failure() && steps.context.outputs.skip == 'false'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = [
-              "PR title policy failed.",
-              "",
-              "Expected format: `<type>(<area>): <subject> (t<N>)`",
-              "Example: `chore(infra): harden engine CI (t10)`",
-              "",
-              "Allowed `type`: feat | fix | refactor | perf | test | docs | chore",
-              "`area`: a lowercase token in parentheses, e.g. `(infra)`.",
-              "Ticket suffix: `(t<digits>)`, e.g. `(t10)`."
-            ].join("\n");
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body
-            });
