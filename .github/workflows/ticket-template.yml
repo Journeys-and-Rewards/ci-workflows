@@ -54,7 +54,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Journeys-and-Rewards/ci-workflows
-          ref: v1.0.3
+          ref: v1.0.4
           path: .policy
 
       # A BLOCK SCALAR, not a plain one. `run: echo "policy component: …"` is an unquoted plain scalar
@@ -63,7 +63,7 @@ jobs:
       # log and no annotation. Two tags shipped with that line before a parser was pointed at the file.
       - name: Report which policy component is in use
         run: |
-          echo "policy component: Journeys-and-Rewards/ci-workflows@v1.0.3"
+          echo "policy component: Journeys-and-Rewards/ci-workflows@v1.0.4"
 
       - name: Ticket specifications follow the standard template
         run: |

@@ -25,11 +25,12 @@ permissions:
   contents: read
 jobs:
   ticket-template:
-    uses: Journeys-and-Rewards/ci-workflows/.github/workflows/ticket-template.yml@v1.0.0
+    uses: Journeys-and-Rewards/ci-workflows/.github/workflows/ticket-template.yml@v1.0.4
 ```
 
 Callers pin an **immutable version tag**. There is no movable major alias, so the checks a project runs
-cannot change underneath it.
+cannot change underneath it. The tag in the example above is the one this release ships as — copy it
+rather than an older one: superseded tags are left in place for the record, not for use.
 
 ## The contract comes from your project
 
